@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SUMMIT RUSH</title>
+<style>
+  html,body{margin:0;padding:0;overflow:hidden;background:#04070c;height:100%;width:100%;touch-action:none;
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;-webkit-user-select:none;user-select:none;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;}
+  canvas{display:block;touch-action:none;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<script>
+(function(){
+'use strict';
+
+// ---------- canvas ----------
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+let W,H,DPR,groundY;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  const maxW=480,maxH=800;
+  const scale=Math.min(window.innerWidth/maxW, window.innerHeight/maxH, 1);
+  W=maxW; H=maxH;
+  canvas.style.width=(maxW*scale)+'px';
+  canvas.style.height=(maxH*scale)+'px';
+  canvas.width=W*DPR; canvas.height=H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  groundY=H*0.7;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- audio ----------
+let audioCtx=null;
+function ensureAudio(){
+  if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  else if(audioCtx.state==='suspended'){ audioCtx.resume(); }
+}
+function tone(freq,dur,type,vol,delay){
+  if(!audioCtx) return;
+  delay=delay||0; vol=vol==null?0.15:vol;
+  const t0=audioCtx.currentTime+delay;
+  const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+  osc.type=type||'sine';
+  osc.frequency.setValueAtTime(freq,t0);
+  gain.gain.setValueAtTime(0.0001,t0);
+  gain.gain.exponentialRampToValueAtTime(vol,t0+0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0+dur+0.02);
+}
+function sweep(f0,f1,dur,type,vol){
+  if(!audioCtx) return;
+  const t0=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+  osc.type=type||'sine';
+  osc.frequency.setValueAtTime(f0,t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(f1,20),t0+dur);
+  gain.gain.setValueAtTime(vol||0.12,t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0+dur+0.02);
+}
+function noiseBurst(dur,vol,cut){
+  if(!audioCtx) return;
+  const n=Math.max(1,Math.floor(audioCtx.sampleRate*dur));
+  const buf=audioCtx.createBuffer(1,n,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const src=audioCtx.createBufferSource(); src.buffer=buf;
+  const filt=audioCtx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=cut||1200;
+  const gain=audioCtx.createGain(); gain.gain.value=vol==null?0.25:vol;
+  src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start();
+}
+function sfxJump(){ sweep(360,620,0.11,'square',0.09); }
+function sfxDoubleJump(){ sweep(500,900,0.13,'triangle',0.1); tone(1100,0.06,'sine',0.05,0.05); }
+function sfxLand(){ tone(160,0.05,'sine',0.06); }
+function sfxCrash(){ noiseBurst(0.3,0.3,350); sweep(200,40,0.4,'sawtooth',0.17); }
+function sfxLevelUp(){ tone(523,0.1,'triangle',0.12); tone(659,0.1,'triangle',0.12,0.09); tone(784,0.16,'triangle',0.13,0.18); }
+function sfxStart(){ tone(400,0.08,'sine',0.12); tone(600,0.1,'sine',0.1,0.06); }
+
+// ---------- persistence ----------
+let bestDistance=0, totalDistance=0;
+(async function(){ try{
+  const r1=await window.storage.get('summit-rush-best', false);
+  if(r1&&r1.value) bestDistance=parseFloat(r1.value)||0;
+  const r2=await window.storage.get('summit-rush-total', false);
+  if(r2&&r2.value) totalDistance=parseFloat(r2.value)||0;
+}catch(e){} })();
+let saveTimer=0;
+async function saveStats(){
+  try{
+    await window.storage.set('summit-rush-best', String(Math.floor(bestDistance)), false);
+    await window.storage.set('summit-rush-total', String(Math.floor(totalDistance)), false);
+  }catch(e){}
+}
+
+// ---------- constants ----------
+const TILE_W=40, STEP_H=32;
+const GRAVITY=2200, JUMP_V=-760, DOUBLEJUMP_V=-680;
+const PLAYER_SCREEN_X=110, PLAYER_R=14;
+const RESPAWN_BACK=260, LEVEL_LEN=550, SAFE_TILES=8;
+
+function speedFor(d){ return Math.min(260 + d*0.05, 620); }
+function levelFor(d){ return Math.floor(d/LEVEL_LEN)+1; }
+
+// ---------- world ----------
+let tileHeights={};
+let genIdx=0;
+
+function writeFlat(idx,len,h){ for(let i=0;i<len;i++) tileHeights[idx+i]=h; return idx+len; }
+function pxToTiles(px){ return Math.max(1, Math.round(px/TILE_W)); }
+
+function featurePool(level){
+  const pool=['hurdle','hurdle','easyGap'];
+  if(level>=2) pool.push('medGap','stairs2');
+  if(level>=3) pool.push('hardGap','stairs2');
+  if(level>=4) pool.push('stairs3','hardGap');
+  if(level>=5) pool.push('doubleGap');
+  if(level>=6) pool.push('platformSeq','doubleGap');
+  if(level>=8) pool.push('platformSeq','bigDoubleGap');
+  return pool;
+}
+
+function generateFeature(idx, level, spd){
+  const flatLen = Math.max(3, Math.round((Math.max(90,260-level*10)+Math.random()*60)/TILE_W));
+  idx = writeFlat(idx, flatLen, 0);
+  const pool = featurePool(level);
+  const type = pool[Math.floor(Math.random()*pool.length)];
+  switch(type){
+    case 'hurdle': {
+      const h = (level>=4 && Math.random()<0.4) ? 3 : 2;
+      idx = writeFlat(idx,1,h);
+      break;
+    }
+    case 'easyGap': idx += pxToTiles(spd*0.22); break;
+    case 'medGap': idx += pxToTiles(spd*0.34); break;
+    case 'hardGap': idx += pxToTiles(spd*0.5); break;
+    case 'doubleGap': idx += pxToTiles(spd*0.72); break;
+    case 'bigDoubleGap': idx += pxToTiles(spd*0.92); break;
+    case 'stairs2':
+      idx = writeFlat(idx,2,1); idx = writeFlat(idx,2,2); idx = writeFlat(idx,2,1);
+      break;
+    case 'stairs3':
+      idx = writeFlat(idx,2,1); idx = writeFlat(idx,2,2); idx = writeFlat(idx,2,3);
+      idx = writeFlat(idx,2,2); idx = writeFlat(idx,2,1);
+      break;
+    case 'platformSeq': {
+      const reps = 2+Math.floor(Math.random()*2);
+      for(let r=0;r<reps;r++){
+        idx = writeFlat(idx,2,3);
+        if(r<reps-1) idx += pxToTiles(spd*0.6);
+      }
+      break;
+    }
+  }
+  return idx;
+}
+
+function ensureTerrain(distance){
+  const level = levelFor(distance);
+  const spd = speedFor(distance);
+  while(genIdx*TILE_W < distance + 900){
+    genIdx = generateFeature(genIdx, level, spd);
+  }
+  // prune old tiles occasionally
+  const cutoff = Math.floor(distance/TILE_W) - 30;
+  if(Math.random()<0.02){
+    for(const k in tileHeights){ if(+k < cutoff) delete tileHeights[k]; }
+  }
+}
+
+// ---------- state ----------
+let state='ready';
+let distance=0, level=1, lastLevel=1;
+let player={feetY:0, prevFeetY:0, vy:0, grounded:true, jumpsUsed:0};
+let crashing=false, crashTimer=0, invulnTimer=0;
+let particles=[], popups=[], dustTimer=0;
+let shake=0, flash=0;
+
+function resetWorld(){
+  tileHeights={}; genIdx=0;
+  distance=0; level=1; lastLevel=1;
+  player={feetY:groundY, prevFeetY:groundY, vy:0, grounded:true, jumpsUsed:0};
+  crashing=false; crashTimer=0; invulnTimer=1.0;
+  particles=[]; popups=[];
+  shake=0; flash=0;
+  ensureTerrain(0);
+  state='playing';
+}
+
+function spawnParticles(x,y,hue,count,spread){
+  for(let i=0;i<count;i++){
+    const a=Math.random()*Math.PI*2;
+    const s=(Math.random()*3+1)*spread;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:Math.random()*0.5+0.3,hue,size:Math.random()*3+1.5});
+  }
+}
+
+function triggerCrash(){
+  if(crashing || invulnTimer>0) return;
+  crashing=true; crashTimer=0.85;
+  shake=Math.min(shake+16,20); flash=0.55;
+  spawnParticles(PLAYER_SCREEN_X, player.feetY-10, 0, 26, 2.2);
+  sfxCrash();
+}
+
+function respawn(){
+  crashing=false;
+  distance = Math.max(0, distance-RESPAWN_BACK);
+  const startIdx=Math.floor(distance/TILE_W);
+  for(let i=0;i<SAFE_TILES;i++) tileHeights[startIdx+i]=0;
+  player.feetY=groundY; player.prevFeetY=groundY; player.vy=0; player.grounded=true; player.jumpsUsed=0;
+  invulnTimer=1.0;
+}
+
+function tap(){
+  ensureAudio();
+  if(state==='ready'){ sfxStart(); resetWorld(); return; }
+  if(state!=='playing' || crashing) return;
+  if(player.grounded){
+    player.vy=JUMP_V; player.grounded=false; player.jumpsUsed=1;
+    spawnParticles(PLAYER_SCREEN_X, player.feetY, 40, 6, 1.0);
+    sfxJump();
+  } else if(player.jumpsUsed<2){
+    player.vy=DOUBLEJUMP_V; player.jumpsUsed=2;
+    spawnParticles(PLAYER_SCREEN_X, player.feetY, 280, 10, 1.6);
+    sfxDoubleJump();
+  }
+}
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); tap(); });
+window.addEventListener('keydown', e=>{ if(e.code==='Space'||e.code==='Enter'||e.code==='ArrowUp'){ e.preventDefault(); tap(); } });
+
+// ---------- update ----------
+let lastT=performance.now();
+function update(dt){
+  if(state!=='playing') return;
+
+  if(invulnTimer>0) invulnTimer-=dt;
+
+  if(crashing){
+    crashTimer-=dt;
+    if(crashTimer<=0) respawn();
+  } else {
+    const spd = speedFor(distance);
+    distance += spd*dt;
+    totalDistance += spd*dt;
+    if(distance>bestDistance) bestDistance=distance;
+
+    ensureTerrain(distance);
+
+    player.prevFeetY = player.feetY;
+    player.vy += GRAVITY*dt;
+    player.feetY += player.vy*dt;
+
+    const idx = Math.floor(distance/TILE_W);
+    const h = tileHeights[idx];
+    const requiredSurfaceY = (h===undefined) ? null : (groundY - h*STEP_H);
+
+    if(requiredSurfaceY!==null){
+      const wasAbove = player.prevFeetY <= requiredSurfaceY+1;
+      if(wasAbove && player.feetY>=requiredSurfaceY && player.vy>=0){
+        player.feetY = requiredSurfaceY; player.vy=0;
+        if(!player.grounded) sfxLand();
+        player.grounded=true; player.jumpsUsed=0;
+      } else if(player.feetY > requiredSurfaceY){
+        triggerCrash();
+      } else {
+        player.grounded=false;
+      }
+    } else {
+      player.grounded=false;
+      if(player.feetY > H+100) triggerCrash();
+    }
+
+    if(player.grounded){
+      dustTimer -= dt;
+      if(dustTimer<=0){ spawnParticles(PLAYER_SCREEN_X-8, player.feetY, 40, 1, 0.5); dustTimer=0.09; }
+    }
+
+    level = levelFor(distance);
+    if(level>lastLevel){
+      lastLevel=level;
+      popups.push({text:'LEVEL '+level, x:W/2, y:H*0.3, life:1.2, vy:-0.4});
+      sfxLevelUp();
+    }
+
+    saveTimer+=dt;
+    if(saveTimer>3){ saveTimer=0; saveStats(); }
+  }
+
+  shake*=0.87; if(shake<0.05) shake=0;
+  flash*=0.9; if(flash<0.01) flash=0;
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.2; p.vx*=0.96;
+    p.life-=dt*1.8;
+    if(p.life<=0) particles.splice(i,1);
+  }
+  for(let i=popups.length-1;i>=0;i--){
+    const p=popups[i];
+    p.y+=p.vy; p.life-=dt*0.9;
+    if(p.life<=0) popups.splice(i,1);
+  }
+}
+
+// ---------- draw ----------
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function draw(){
+  const hue=(200+level*14)%360;
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0, `hsl(${hue},55%,14%)`);
+  g.addColorStop(0.7, `hsl(${hue-10},50%,8%)`);
+  g.addColorStop(1, `hsl(${hue-10},45%,4%)`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // parallax hills
+  ctx.save();
+  ctx.globalAlpha=0.25;
+  ctx.fillStyle=`hsl(${hue},40%,25%)`;
+  drawHillLayer(distance*0.15, H*0.62, 70, 22);
+  ctx.globalAlpha=0.35;
+  ctx.fillStyle=`hsl(${hue},40%,18%)`;
+  drawHillLayer(distance*0.3, H*0.68, 50, 16);
+  ctx.restore();
+
+  ctx.save();
+  const sx=(Math.random()-0.5)*shake, sy=(Math.random()-0.5)*shake;
+  ctx.translate(sx,sy);
+
+  // ground/tiles
+  const startIdx = Math.floor((distance-PLAYER_SCREEN_X)/TILE_W)-1;
+  const endIdx = Math.floor((distance+(W-PLAYER_SCREEN_X))/TILE_W)+1;
+  for(let idx=startIdx; idx<=endIdx; idx++){
+    const hgt = tileHeights[idx];
+    const worldX = idx*TILE_W;
+    const sx2 = worldX - distance + PLAYER_SCREEN_X;
+    if(hgt===undefined) continue;
+    const topY = groundY - hgt*STEP_H;
+    const blockHue = hgt===0 ? hue : (hue+40+hgt*15)%360;
+    ctx.save();
+    ctx.shadowColor = hgt>0 ? `hsla(${blockHue},80%,60%,0.5)` : 'transparent';
+    ctx.shadowBlur = hgt>0?10:0;
+    const grad=ctx.createLinearGradient(sx2,topY,sx2,topY+40);
+    grad.addColorStop(0, `hsl(${blockHue},70%,${hgt>0?55:38}%)`);
+    grad.addColorStop(1, `hsl(${blockHue},70%,${hgt>0?38:22}%)`);
+    ctx.fillStyle=grad;
+    ctx.fillRect(sx2-1, topY, TILE_W+2, H-topY+40);
+    ctx.strokeStyle=`hsla(${blockHue},90%,80%,0.4)`;
+    ctx.lineWidth=1.5;
+    ctx.strokeRect(sx2-1, topY, TILE_W+2, 3);
+    ctx.restore();
+  }
+
+  // player
+  const playerHue = crashing ? 0 : 190;
+  const stretch = Math.max(-0.3, Math.min(0.3, player.vy/2000));
+  ctx.save();
+  ctx.translate(PLAYER_SCREEN_X, player.feetY-PLAYER_R);
+  ctx.scale(1-stretch*0.5, 1+stretch*0.5);
+  ctx.shadowColor = crashing? 'rgba(255,80,80,0.8)' : 'rgba(255,255,255,0.85)';
+  ctx.shadowBlur = 16;
+  const pg=ctx.createRadialGradient(0,0,0,0,0,PLAYER_R);
+  pg.addColorStop(0, crashing? '#ffaaaa':'#ffffff');
+  pg.addColorStop(1, `hsl(${playerHue},85%,55%)`);
+  ctx.fillStyle=pg;
+  ctx.beginPath(); ctx.arc(0,0,PLAYER_R,0,7); ctx.fill();
+  ctx.restore();
+
+  // particles
+  for(const p of particles){
+    ctx.globalAlpha=Math.max(p.life,0);
+    ctx.fillStyle = p.hue===0 ? '#ff5555' : `hsl(${p.hue},85%,65%)`;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,7); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  ctx.restore();
+
+  if(flash>0){ ctx.fillStyle=`rgba(255,60,60,${flash*0.3})`; ctx.fillRect(0,0,W,H); }
+
+  for(const p of popups){
+    ctx.save();
+    ctx.globalAlpha=Math.max(p.life,0);
+    ctx.fillStyle='#fff';
+    ctx.font='bold 26px system-ui';
+    ctx.textAlign='center';
+    ctx.shadowColor='rgba(255,255,255,0.8)'; ctx.shadowBlur=14;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+
+  drawHUD();
+}
+
+function drawHillLayer(offset, baseY, amp, freq){
+  ctx.beginPath();
+  ctx.moveTo(0,H);
+  for(let x=0;x<=W;x+=10){
+    const y = baseY - Math.sin((x+offset)/freq/10)*amp - amp;
+    ctx.lineTo(x,y);
+  }
+  ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+}
+
+function drawHUD(){
+  ctx.save();
+  ctx.textAlign='center';
+  if(state==='ready'){
+    ctx.fillStyle='#fff'; ctx.font='bold 38px system-ui';
+    ctx.shadowColor='rgba(120,220,255,0.7)'; ctx.shadowBlur=20;
+    ctx.fillText('SUMMIT RUSH', W/2, H*0.3);
+    ctx.font='16px system-ui'; ctx.shadowBlur=0;
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.fillText('TAP TO START', W/2, H*0.37);
+    ctx.font='13px system-ui';
+    ctx.fillStyle='rgba(255,255,255,0.55)';
+    ctx.fillText('Tap to jump. Tap again in the air to double-jump', W/2, H*0.42);
+    ctx.fillText('further for big gaps and tall climbs.', W/2, H*0.445);
+    ctx.font='12px system-ui';
+    ctx.fillStyle='rgba(255,255,255,0.4)';
+    ctx.fillText('If you fall, you resume just behind where you died.', W/2, H*0.485);
+    if(bestDistance>0){
+      ctx.fillStyle='rgba(255,215,80,0.85)'; ctx.font='bold 15px system-ui';
+      ctx.fillText('BEST: '+Math.floor(bestDistance)+'m', W/2, H*0.54);
+    }
+    if(totalDistance>0){
+      ctx.fillStyle='rgba(150,220,255,0.75)'; ctx.font='13px system-ui';
+      ctx.fillText('TOTAL CLIMBED: '+Math.floor(totalDistance)+'m', W/2, H*0.57);
+    }
+  } else {
+    ctx.textAlign='left';
+    ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font='bold 15px system-ui';
+    ctx.fillText('LV '+level, 16, 30);
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,215,80,0.85)'; ctx.font='12px system-ui';
+    ctx.fillText('BEST '+Math.floor(bestDistance)+'m', W-16, 24);
+    ctx.fillStyle='rgba(150,220,255,0.75)'; ctx.font='11px system-ui';
+    ctx.fillText('TOTAL '+Math.floor(totalDistance)+'m', W-16, 40);
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.font='bold 34px system-ui';
+    ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=8;
+    ctx.fillText(Math.floor(distance)+'m', W/2, 66);
+    ctx.shadowBlur=0;
+    if(crashing){
+      ctx.fillStyle='rgba(255,120,120,0.95)'; ctx.font='bold 20px system-ui';
+      ctx.fillText('OOF!', W/2, H*0.4);
+    }
+  }
+  ctx.restore();
+}
+
+function loop(t){
+  const dt=Math.min((t-lastT)/1000, 0.05);
+  lastT=t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

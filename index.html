@@ -1,0 +1,2395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SUMMIT RUSH — 3D Cyber Alpine Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-dark: #04060f;
+    --cyan: #00f0ff;
+    --cyan-dim: rgba(0, 240, 255, 0.25);
+    --cyan-glow: rgba(0, 240, 255, 0.6);
+    --violet: #a855f7;
+    --violet-glow: rgba(168, 85, 247, 0.6);
+    --gold: #fbbf24;
+    --gold-glow: rgba(251, 191, 36, 0.6);
+    --glass-bg: rgba(10, 16, 32, 0.72);
+    --glass-border: rgba(0, 240, 255, 0.18);
+    --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'Space Grotesk', monospace;
+  }
+
+  * { box-sizing: border-box; }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: var(--bg-dark);
+    height: 100%;
+    width: 100%;
+    touch-action: none;
+    font-family: var(--font-main);
+    -webkit-user-select: none;
+    user-select: none;
+    color: #fff;
+  }
+
+  /* Full-bleed background with ambient glow */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(circle at 50% 25%, rgba(0, 240, 255, 0.08) 0%, rgba(168, 85, 247, 0.06) 45%, transparent 75%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #020308;
+    z-index: 2;
+  }
+
+  /* Canvas frame with subtle 3D shadow and neon border */
+  #game-container {
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 240, 255, 0.12);
+    border-radius: 18px;
+    overflow: hidden;
+    background: #04060f;
+  }
+
+  canvas {
+    display: block;
+    touch-action: none;
+    background: transparent;
+  }
+
+  /* Glassmorphism UI Panels */
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    color: #fff;
+  }
+
+  /* In-Game HUD Elements */
+  #hud-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 16px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  #hud-overlay.active {
+    opacity: 1;
+  }
+
+  .hud-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* Level Badge with Progress */
+  .level-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px 14px;
+    min-width: 96px;
+  }
+
+  .level-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .level-title .dot {
+    width: 6px;
+    height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--cyan);
+    animation: pulse 1.8s infinite;
+  }
+
+  .level-num {
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+    font-family: var(--font-mono);
+  }
+
+  .level-bar-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .level-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--cyan), var(--violet));
+    box-shadow: 0 0 8px var(--cyan);
+    transition: width 0.15s ease-out;
+  }
+
+  /* Center Distance Meter */
+  .distance-card {
+    text-align: center;
+    padding: 8px 18px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 14px;
+  }
+
+  .distance-val {
+    font-size: 32px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    letter-spacing: -0.5px;
+    line-height: 1;
+    background: linear-gradient(180deg, #ffffff 30%, #a5f3fc 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 2px 8px rgba(0, 240, 255, 0.4));
+  }
+
+  .speed-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 3px;
+    font-family: var(--font-mono);
+  }
+
+  /* Prominent Best Score Glass Card */
+  .best-score-card {
+    padding: 8px 14px;
+    text-align: right;
+    min-width: 116px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    border-color: rgba(251, 191, 36, 0.35);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(251, 191, 36, 0.25);
+  }
+
+  .best-score-header {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: var(--gold);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .best-score-num {
+    font-size: 20px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    color: #ffffff;
+    text-shadow: 0 0 12px var(--gold-glow);
+    line-height: 1.1;
+  }
+
+  .total-score-sub {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: rgba(255, 255, 255, 0.65);
+    font-weight: 600;
+  }
+
+  .new-record-badge {
+    display: none;
+    position: absolute;
+    bottom: -18px;
+    right: 4px;
+    background: linear-gradient(90deg, #f59e0b, #ec4899);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 1.2px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.85);
+    animation: pulse 1s infinite;
+  }
+
+  .new-record-badge.active {
+    display: block;
+  }
+
+  /* Left-Side Control Panel */
+  .left-panel {
+    position: absolute;
+    left: 14px;
+    top: 76px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 14px;
+    pointer-events: auto;
+    z-index: 12;
+    background: rgba(10, 16, 32, 0.75);
+    border: 1px solid rgba(0, 240, 255, 0.22);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  .side-btn {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    touch-action: manipulation;
+  }
+
+  .side-btn:hover {
+    background: rgba(0, 240, 255, 0.18);
+    border-color: var(--cyan);
+    color: #fff;
+    box-shadow: 0 0 12px var(--cyan-glow);
+    transform: scale(1.06);
+  }
+
+  .side-btn:active {
+    transform: scale(0.95);
+  }
+
+  .side-btn.exit-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #ff8888;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+  }
+
+  .side-btn .btn-tooltip {
+    position: absolute;
+    left: 46px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(4, 6, 15, 0.94);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: var(--font-mono);
+    color: var(--cyan);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .side-btn:hover .btn-tooltip {
+    opacity: 1;
+    transform: translateY(-50%) translateX(2px);
+  }
+
+  /* Safe Confirmation Modal */
+  .confirm-dialog {
+    width: 100%;
+    max-width: 320px;
+    padding: 24px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    border-color: rgba(251, 191, 36, 0.35);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 24px rgba(251, 191, 36, 0.2);
+  }
+
+  .confirm-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.2);
+  }
+
+  .confirm-title {
+    font-size: 19px;
+    font-weight: 900;
+    letter-spacing: 1.5px;
+    color: #fff;
+    text-transform: uppercase;
+  }
+
+  .confirm-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.75);
+    margin-bottom: 4px;
+  }
+
+  .confirm-btn-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .confirm-action-btn {
+    flex: 1;
+    height: 42px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    border-radius: 10px;
+  }
+
+  .confirm-action-btn.btn-cancel {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .confirm-action-btn.btn-cancel:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+
+  @media (max-width: 520px) {
+    .side-btn .btn-tooltip {
+      display: none;
+    }
+    .left-panel {
+      top: 66px;
+      left: 10px;
+      padding: 4px;
+      gap: 4px;
+    }
+    .side-btn {
+      width: 32px;
+      height: 32px;
+    }
+  }
+
+  /* Controls HUD Bottom */
+  .hud-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: auto;
+  }
+
+  .hud-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    cursor: pointer;
+    color: #fff;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+
+  .hud-btn:hover {
+    border-color: var(--cyan);
+    box-shadow: 0 0 16px var(--cyan-glow);
+    transform: translateY(-2px);
+  }
+
+  .hud-btn:active {
+    transform: translateY(1px);
+  }
+
+  /* On-screen touch jump button (mobile touch) */
+  #touch-jump-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(0, 240, 255, 0.35), rgba(10, 16, 32, 0.85));
+    border: 2px solid var(--cyan);
+    box-shadow: 0 0 24px var(--cyan-glow), inset 0 0 16px rgba(0, 240, 255, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    cursor: pointer;
+    touch-action: none;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  #touch-jump-btn:active {
+    transform: scale(0.92);
+    box-shadow: 0 0 36px var(--cyan);
+    background: radial-gradient(circle at 35% 35%, rgba(0, 240, 255, 0.6), rgba(10, 16, 32, 0.95));
+  }
+
+  #touch-jump-btn span {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    color: #fff;
+    text-transform: uppercase;
+  }
+
+  /* Overlays: Start Screen & Modals */
+  .screen-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 20;
+    background: radial-gradient(circle at 50% 35%, rgba(10, 16, 38, 0.88), rgba(4, 6, 15, 0.96));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .screen-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Hero Logo Badge */
+  .logo-container {
+    text-align: center;
+    margin-bottom: 24px;
+    position: relative;
+  }
+
+  .logo-mountain-badge {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(168, 85, 247, 0.2));
+    border: 1px solid var(--cyan);
+    border-radius: 20px;
+    box-shadow: 0 0 32px var(--cyan-glow), inset 0 0 16px rgba(0, 240, 255, 0.3);
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .logo-mountain-badge svg {
+    width: 36px;
+    height: 36px;
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 8px var(--cyan));
+  }
+
+  .game-title {
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    line-height: 1;
+    margin: 0 0 6px;
+    background: linear-gradient(135deg, #ffffff 0%, var(--cyan) 50%, var(--violet) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 4px 20px rgba(0, 240, 255, 0.4));
+  }
+
+  .game-subtitle {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3.5px;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+  }
+
+  /* Start Screen Stats Grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    max-width: 340px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    padding: 12px 14px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .stat-value {
+    font-size: 22px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+  }
+
+  .stat-card.gold-card .stat-value {
+    color: var(--gold);
+    text-shadow: 0 0 12px var(--gold-glow);
+  }
+
+  .stat-card.cyan-card .stat-value {
+    color: var(--cyan);
+    text-shadow: 0 0 12px var(--cyan-glow);
+  }
+
+  /* Primary Action Button (Play/Resume) */
+  .btn-primary {
+    position: relative;
+    width: 100%;
+    max-width: 280px;
+    padding: 16px 28px;
+    font-family: var(--font-main);
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #04060f;
+    background: linear-gradient(135deg, #00f0ff 0%, #38bdf8 60%, #a855f7 100%);
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0, 240, 255, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.3);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 12px 40px rgba(0, 240, 255, 0.65), 0 0 20px var(--violet-glow);
+  }
+
+  .btn-primary:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(60deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%);
+    transform: translateX(-100%);
+    animation: shine 3.5s infinite;
+  }
+
+  /* Instructions Card */
+  .instructions-card {
+    width: 100%;
+    max-width: 340px;
+    padding: 14px 18px;
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .instruction-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .key-badge {
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    min-width: 32px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Crash / Respawn Alert */
+  #crash-banner {
+    position: absolute;
+    top: 35%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    padding: 14px 28px;
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid #ef4444;
+    border-radius: 14px;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 0 36px rgba(239, 68, 68, 0.5);
+    color: #ff8888;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 15;
+  }
+
+  #crash-banner.active {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  #crash-banner .subtext {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: 4px;
+    font-family: var(--font-mono);
+  }
+
+  /* Level Up Floating Banner */
+  #levelup-banner {
+    position: absolute;
+    top: 25%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.7);
+    padding: 16px 36px;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(168, 85, 247, 0.3));
+    border: 1.5px solid var(--gold);
+    border-radius: 16px;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 0 40px var(--gold-glow);
+    color: #fff;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 15;
+  }
+
+  #levelup-banner.active {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  #levelup-banner .tag {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+
+  #levelup-banner .title {
+    font-size: 28px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    margin: 2px 0 0;
+    color: #fff;
+    text-shadow: 0 0 16px var(--gold);
+  }
+
+  /* Keyframe Animations */
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  @keyframes shine {
+    0% { transform: translateX(-150%) rotate(25deg); }
+    30%, 100% { transform: translateX(150%) rotate(25deg); }
+  }
+
+  /* Responsive Tweaks */
+  @media (max-width: 520px) {
+    #game-container {
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .game-title {
+      font-size: 32px;
+    }
+    .distance-val {
+      font-size: 26px;
+    }
+    .level-card, .stats-card {
+      padding: 6px 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <div id="game-container">
+    <canvas id="c"></canvas>
+
+    <!-- In-Game Glass HUD -->
+    <div id="hud-overlay">
+      <div class="hud-top">
+        <div class="glass-panel level-card">
+          <div class="level-title">
+            <span class="dot"></span>
+            <span>EXPEDITION</span>
+          </div>
+          <div class="level-num" id="hud-level-num">LV 01</div>
+          <div class="level-bar-track">
+            <div class="level-bar-fill" id="hud-level-bar"></div>
+          </div>
+        </div>
+
+        <div class="glass-panel distance-card">
+          <div class="distance-val" id="hud-distance-val">0m</div>
+          <div class="speed-pill" id="hud-speed-val">⚡ 260 M/S</div>
+        </div>
+
+        <div class="glass-panel best-score-card">
+          <div class="best-score-header">
+            <span>👑</span>
+            <span>BEST SCORE</span>
+          </div>
+          <div class="best-score-num" id="hud-best-val">0m</div>
+          <div class="total-score-sub" id="hud-total-val">TOT 0m</div>
+          <div id="new-record-pill" class="new-record-badge">NEW RECORD!</div>
+        </div>
+      </div>
+
+      <!-- Left-Side Control Panel -->
+      <div id="left-control-panel" class="glass-panel left-panel">
+        <button class="side-btn" id="home-btn" aria-label="Basecamp Home" title="Basecamp Home">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span class="btn-tooltip">HOME</span>
+        </button>
+        <button class="side-btn" id="side-audio-btn" aria-label="Toggle Sound" title="Toggle Sound">
+          <svg id="side-audio-icon-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <svg id="side-audio-icon-off" style="display:none;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+          <span class="btn-tooltip">SOUND</span>
+        </button>
+        <button class="side-btn exit-btn" id="exit-btn" aria-label="Exit Game" title="Exit Game">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span class="btn-tooltip">EXIT</span>
+        </button>
+      </div>
+
+      <div class="hud-bottom">
+        <button class="hud-btn" id="audio-toggle-btn" aria-label="Toggle Sound" title="Toggle Sound">
+          <svg id="audio-icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <svg id="audio-icon-off" style="display:none;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+
+        <button class="hud-btn" id="pause-btn" aria-label="Pause Game" title="Pause Game">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+          </svg>
+        </button>
+
+        <div id="touch-jump-btn" aria-label="Tap to Jump">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+          <span>JUMP</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start / Title Screen Overlay -->
+    <div id="start-screen" class="screen-overlay active">
+      <div class="logo-container">
+        <div class="logo-mountain-badge">
+          <svg viewBox="0 0 24 24">
+            <path d="M2 20L10 6L14 13L17 8L22 20H2Z"></path>
+          </svg>
+        </div>
+        <h1 class="game-title">SUMMIT RUSH</h1>
+        <div class="game-subtitle">CYBER ALPINE RUNNER</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="glass-panel stat-card gold-card">
+          <div class="stat-label">👑 Best Ascent</div>
+          <div class="stat-value" id="start-best-val">0m</div>
+        </div>
+        <div class="glass-panel stat-card cyan-card">
+          <div class="stat-label">🏔️ Total Climbed</div>
+          <div class="stat-value" id="start-total-val">0m</div>
+        </div>
+      </div>
+
+      <button id="start-btn" class="btn-primary">
+        <span>START ASCENT</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+
+      <div class="glass-panel instructions-card">
+        <div class="instruction-row">
+          <span class="key-badge">TAP</span>
+          <span>or</span>
+          <span class="key-badge">SPACE</span>
+          <span>Jump over gaps & hurdles</span>
+        </div>
+        <div class="instruction-row">
+          <span class="key-badge">2x</span>
+          <span>Tap in mid-air to <strong>Double-Jump</strong> higher</span>
+        </div>
+        <div class="instruction-row">
+          <span class="key-badge">⚡</span>
+          <span>Speed & elevation scale with every level</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause Screen Overlay -->
+    <div id="pause-screen" class="screen-overlay">
+      <div class="logo-container">
+        <h2 class="game-title" style="font-size:32px;">ASCENT PAUSED</h2>
+        <div class="game-subtitle">HOLDING POSITION</div>
+      </div>
+
+      <button id="resume-btn" class="btn-primary" style="margin-bottom:12px;">
+        <span>RESUME RUN</span>
+      </button>
+
+      <button id="restart-btn" class="hud-btn glass-panel" style="width:100%; max-width:280px; height:46px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; font-size:13px;">
+        RESTART RUN
+      </button>
+    </div>
+
+    <!-- Safe Exit / Home Confirmation Modal -->
+    <div id="confirm-modal" class="screen-overlay">
+      <div class="glass-panel confirm-dialog">
+        <div class="confirm-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <div class="confirm-title" id="confirm-modal-title">EXIT ASCENT?</div>
+        <div class="confirm-desc" id="confirm-modal-desc">Return to Basecamp? Your personal best and total distance are safely saved.</div>
+        <div class="confirm-btn-row">
+          <button id="confirm-cancel-btn" class="hud-btn glass-panel confirm-action-btn btn-cancel">CANCEL</button>
+          <button id="confirm-ok-btn" class="btn-primary confirm-action-btn">CONFIRM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Crash Banner Notification -->
+    <div id="crash-banner">
+      <div>CRASH DETECTED</div>
+      <div class="subtext">RECOVERING TRAIL POSITION...</div>
+    </div>
+
+    <!-- Level Up Banner -->
+    <div id="levelup-banner">
+      <div class="tag">SECTOR CLEARED</div>
+      <div class="title" id="levelup-title">LEVEL 2</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+// ==========================================
+// 1. CANVAS & SIZING
+// ==========================================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const gameContainer = document.getElementById('game-container');
+
+let W, H, DPR, groundY;
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const maxW = 480, maxH = 800;
+  const scale = Math.min(window.innerWidth / maxW, window.innerHeight / maxH, 1);
+  W = maxW; 
+  H = maxH;
+  
+  const displayW = Math.round(maxW * scale);
+  const displayH = Math.round(maxH * scale);
+  
+  canvas.style.width = displayW + 'px';
+  canvas.style.height = displayH + 'px';
+  gameContainer.style.width = displayW + 'px';
+  gameContainer.style.height = displayH + 'px';
+  
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  groundY = H * 0.70;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ==========================================
+// 2. AUDIO SYNTHESIZER (WEB AUDIO API)
+// ==========================================
+let audioCtx = null;
+let soundEnabled = true;
+
+function ensureAudio(){
+  if(!audioCtx){
+    try{
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if(AudioContextClass){
+        audioCtx = new AudioContextClass();
+      }
+    }catch(e){}
+  } else if(audioCtx.state === 'suspended'){
+    audioCtx.resume();
+  }
+}
+
+function tone(freq, dur, type, vol, delay){
+  if(!soundEnabled || !audioCtx) return;
+  delay = delay || 0;
+  vol = vol == null ? 0.15 : vol;
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, t0);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function sweep(f0, f1, dur, type, vol, delay){
+  if(!soundEnabled || !audioCtx) return;
+  delay = delay || 0;
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(f0, t0);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(f1, 20), t0 + dur);
+  gain.gain.setValueAtTime(vol || 0.12, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function noiseBurst(dur, vol, cut){
+  if(!soundEnabled || !audioCtx) return;
+  const n = Math.max(1, Math.floor(audioCtx.sampleRate * dur));
+  const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for(let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = cut || 1200;
+  const gain = audioCtx.createGain();
+  gain.gain.value = vol == null ? 0.25 : vol;
+  src.connect(filt);
+  filt.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start();
+}
+
+function sfxJump(){
+  sweep(340, 680, 0.12, 'square', 0.08);
+  tone(520, 0.08, 'sine', 0.07, 0.02);
+}
+
+function sfxDoubleJump(){
+  sweep(480, 960, 0.14, 'triangle', 0.11);
+  tone(1200, 0.08, 'sine', 0.06, 0.04);
+  sweep(800, 1400, 0.10, 'sine', 0.04, 0.06);
+}
+
+function sfxLand(){
+  tone(140, 0.06, 'triangle', 0.08);
+  noiseBurst(0.04, 0.06, 400);
+}
+
+function sfxCrash(){
+  noiseBurst(0.35, 0.35, 450);
+  sweep(220, 35, 0.45, 'sawtooth', 0.22);
+}
+
+function sfxLevelUp(){
+  // Triumphant cyber arpeggio
+  tone(523.25, 0.10, 'triangle', 0.14, 0.00); // C5
+  tone(659.25, 0.10, 'triangle', 0.14, 0.08); // E5
+  tone(783.99, 0.12, 'triangle', 0.15, 0.16); // G5
+  tone(1046.50, 0.24, 'sine', 0.18, 0.24);    // C6
+}
+
+function sfxStart(){
+  tone(380, 0.07, 'sine', 0.12);
+  tone(580, 0.09, 'sine', 0.12, 0.05);
+  sweep(600, 950, 0.12, 'triangle', 0.08, 0.08);
+}
+
+// ==========================================
+// 3. PERSISTENCE & STATS
+// ==========================================
+let bestDistance = 0;
+let totalDistance = 0;
+
+// Load persisted stats (fallback to localStorage if window.storage is not present)
+(async function loadStats(){
+  try{
+    if(window.storage && typeof window.storage.get === 'function'){
+      const r1 = await window.storage.get('summit-rush-best', false);
+      if(r1 && r1.value) bestDistance = parseFloat(r1.value) || 0;
+      const r2 = await window.storage.get('summit-rush-total', false);
+      if(r2 && r2.value) totalDistance = parseFloat(r2.value) || 0;
+    } else {
+      const b = localStorage.getItem('summit-rush-best');
+      if(b) bestDistance = parseFloat(b) || 0;
+      const t = localStorage.getItem('summit-rush-total');
+      if(t) totalDistance = parseFloat(t) || 0;
+    }
+  } catch(e){}
+  updateUIStats();
+})();
+
+let saveTimer = 0;
+async function saveStats(){
+  const bestStr = String(Math.floor(bestDistance));
+  const totalStr = String(Math.floor(totalDistance));
+  try{
+    if(window.storage && typeof window.storage.set === 'function'){
+      await window.storage.set('summit-rush-best', bestStr, false);
+      await window.storage.set('summit-rush-total', totalStr, false);
+    }
+  }catch(e){}
+  try{
+    localStorage.setItem('summit-rush-best', bestStr);
+    localStorage.setItem('summit-rush-total', totalStr);
+  }catch(e){}
+}
+
+// ==========================================
+// 4. GAME CONSTANTS & GENERATION
+// ==========================================
+const TILE_W = 40;
+const STEP_H = 32;
+const GRAVITY = 2200;
+const JUMP_V = -760;
+const DOUBLEJUMP_V = -680;
+const PLAYER_SCREEN_X = 110;
+const PLAYER_R = 14;
+const RESPAWN_BACK = 260;
+const LEVEL_LEN = 550;
+const SAFE_TILES = 8;
+
+function speedFor(d){ return Math.min(260 + d * 0.05, 620); }
+function levelFor(d){ return Math.floor(d / LEVEL_LEN) + 1; }
+
+let tileHeights = {};
+let genIdx = 0;
+
+function writeFlat(idx, len, h){
+  for(let i = 0; i < len; i++) tileHeights[idx + i] = h;
+  return idx + len;
+}
+
+function pxToTiles(px){
+  return Math.max(1, Math.round(px / TILE_W));
+}
+
+function featurePool(level){
+  // Progressive, beginner-friendly difficulty curve
+  if(level <= 2){
+    // Levels 1-2: Very easy single-step hurdles, smooth mounds, and micro-gaps
+    return ['lowHurdle', 'lowHurdle', 'gentleStep', 'microGap', 'lowHurdle'];
+  }
+  if(level <= 4){
+    // Levels 3-4: Easy low hurdles, gentle stairs, easy jumpable gaps
+    return ['lowHurdle', 'medHurdle', 'easyGap', 'stairs2', 'lowHurdle'];
+  }
+  if(level <= 7){
+    // Levels 5-7: Moderate obstacles introduced gradually
+    return ['medHurdle', 'easyGap', 'medGap', 'stairs2', 'gentlePlatform'];
+  }
+  // Level 8+: Controlled higher challenges, physically clearable jumps
+  return ['medHurdle', 'tallHurdle', 'medGap', 'stairs3', 'controlledDoubleGap', 'gentlePlatform'];
+}
+
+function generateFeature(idx, level, spd){
+  // Generous safe runway between obstacles based on level
+  let flatTiles;
+  if(level <= 2){
+    flatTiles = Math.round((380 + Math.random() * 120) / TILE_W); // 9-13 tiles (360-520px of flat ground)
+  } else if(level <= 4){
+    flatTiles = Math.round((300 + Math.random() * 80) / TILE_W);  // 7-10 tiles
+  } else if(level <= 7){
+    flatTiles = Math.round((240 + Math.random() * 70) / TILE_W);  // 6-8 tiles
+  } else {
+    flatTiles = Math.round((200 + Math.random() * 60) / TILE_W);  // 5-7 tiles
+  }
+
+  idx = writeFlat(idx, Math.max(5, flatTiles), 0);
+  const pool = featurePool(level);
+  const type = pool[Math.floor(Math.random() * pool.length)];
+
+  switch(type){
+    case 'lowHurdle':
+      // Gentle 1-step hurdle (height 1 = 32px, easily cleared with a light single jump)
+      idx = writeFlat(idx, 1, 1);
+      break;
+
+    case 'gentleStep':
+      // Smooth wide mound: step up to h=1 for 3 tiles, then back down
+      idx = writeFlat(idx, 3, 1);
+      break;
+
+    case 'medHurdle':
+      // Standard hurdle (height 2 = 64px)
+      idx = writeFlat(idx, 1, 2);
+      break;
+
+    case 'tallHurdle':
+      // Tall hurdle (height 3 = 96px, introduced only in higher sectors)
+      idx = writeFlat(idx, 1, 3);
+      break;
+
+    case 'microGap':
+      // Very short gap: 1 to 1.5 tiles (40-60px), safely crossed even with casual single jump
+      idx += Math.max(1, Math.min(2, pxToTiles(spd * 0.14)));
+      break;
+
+    case 'easyGap':
+      // Easy gap: 2 tiles (80px), comfortably cleared with single jump
+      idx += Math.max(1, Math.min(2, pxToTiles(spd * 0.20)));
+      break;
+
+    case 'medGap':
+      // Moderate gap: 2 to 3 tiles (80-120px)
+      idx += Math.max(2, Math.min(3, pxToTiles(spd * 0.28)));
+      break;
+
+    case 'controlledDoubleGap':
+      // Controlled double-jump gap: capped at 3-4 tiles, guaranteed clearable
+      idx += Math.max(3, Math.min(4, pxToTiles(spd * 0.44)));
+      break;
+
+    case 'stairs2':
+      // Smooth 2-step pyramid with wide flat top
+      idx = writeFlat(idx, 2, 1);
+      idx = writeFlat(idx, 3, 2);
+      idx = writeFlat(idx, 2, 1);
+      break;
+
+    case 'stairs3':
+      // 3-step gradual staircase
+      idx = writeFlat(idx, 2, 1);
+      idx = writeFlat(idx, 2, 2);
+      idx = writeFlat(idx, 3, 3);
+      idx = writeFlat(idx, 2, 2);
+      idx = writeFlat(idx, 2, 1);
+      break;
+
+    case 'gentlePlatform':
+      // Elevated platform with generous 3-tile landing deck
+      idx = writeFlat(idx, 3, 2);
+      break;
+  }
+
+  // Always ensure at least 2 flat safe landing tiles immediately after every obstacle
+  idx = writeFlat(idx, 2, 0);
+  return idx;
+}
+
+function ensureTerrain(dist){
+  const lvl = levelFor(dist);
+  const spd = speedFor(dist);
+  while(genIdx * TILE_W < dist + 950){
+    genIdx = generateFeature(genIdx, lvl, spd);
+  }
+  const cutoff = Math.floor(dist / TILE_W) - 30;
+  if(Math.random() < 0.02){
+    for(const k in tileHeights){
+      if(+k < cutoff) delete tileHeights[k];
+    }
+  }
+}
+
+// ==========================================
+// 5. GAME STATE
+// ==========================================
+let state = 'ready'; // 'ready', 'playing', 'paused'
+let distance = 0, level = 1, lastLevel = 1;
+let player = {
+  feetY: 0,
+  prevFeetY: 0,
+  vy: 0,
+  grounded: true,
+  jumpsUsed: 0,
+  rollAngle: 0,
+  tiltAngle: 0
+};
+let crashing = false, crashTimer = 0, invulnTimer = 0;
+let particles = [], popups = [], shockwaves = [], playerTrail = [];
+let dustTimer = 0, trailTimer = 0;
+let shake = 0, flash = 0;
+
+// Starfield Background Elements
+const stars = [];
+for(let i = 0; i < 75; i++){
+  stars.push({
+    x: Math.random() * 480,
+    y: Math.random() * 380,
+    r: Math.random() * 1.5 + 0.5,
+    twinkle: Math.random() * Math.PI * 2,
+    speed: Math.random() * 1.5 + 0.5
+  });
+}
+
+// Ambient Floating Cyber Mist / Embers
+const embers = [];
+for(let i = 0; i < 28; i++){
+  embers.push({
+    x: Math.random() * 480,
+    y: Math.random() * 800,
+    vx: (Math.random() - 0.5) * 15 - 25,
+    vy: -Math.random() * 20 - 8,
+    size: Math.random() * 2 + 1,
+    alpha: Math.random() * 0.5 + 0.2,
+    hue: Math.random() > 0.5 ? 185 : 275
+  });
+}
+
+function resetWorld(){
+  tileHeights = {};
+  genIdx = 0;
+  distance = 0;
+  level = 1;
+  lastLevel = 1;
+  player = {
+    feetY: groundY,
+    prevFeetY: groundY,
+    vy: 0,
+    grounded: true,
+    jumpsUsed: 0,
+    rollAngle: 0,
+    tiltAngle: 0
+  };
+  crashing = false;
+  crashTimer = 0;
+  invulnTimer = 1.0;
+  particles = [];
+  popups = [];
+  shockwaves = [];
+  playerTrail = [];
+  shake = 0;
+  flash = 0;
+  newRecordAchieved = false;
+  const newRecordPill = document.getElementById('new-record-pill');
+  if(newRecordPill) newRecordPill.classList.remove('active');
+  ensureTerrain(0);
+  
+  hideCrashBanner();
+  hideLevelUpBanner();
+  updateUIStats();
+  
+  state = 'playing';
+  document.getElementById('start-screen').classList.remove('active');
+  document.getElementById('pause-screen').classList.remove('active');
+  const confirmModal = document.getElementById('confirm-modal');
+  if(confirmModal) confirmModal.classList.remove('active');
+  document.getElementById('hud-overlay').classList.add('active');
+}
+
+// Visual FX Spawners
+function spawnParticles(x, y, hue, count, spread, speedMult){
+  spread = spread || 1.0;
+  speedMult = speedMult || 1.0;
+  for(let i = 0; i < count; i++){
+    const a = Math.random() * Math.PI * 2;
+    const s = (Math.random() * 3.5 + 1.2) * spread * speedMult;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s - 1.2,
+      life: Math.random() * 0.5 + 0.35,
+      maxLife: 0.5,
+      hue,
+      size: Math.random() * 3.2 + 1.5,
+      shape: Math.random() > 0.4 ? 'circle' : 'diamond'
+    });
+  }
+}
+
+function spawnShockwave(x, y, color, maxRadius){
+  shockwaves.push({
+    x,
+    y,
+    color,
+    radius: 4,
+    maxRadius: maxRadius || 36,
+    life: 1.0
+  });
+}
+
+function spawnShardExplosion(x, y){
+  for(let i = 0; i < 24; i++){
+    const a = Math.random() * Math.PI * 2;
+    const spd = Math.random() * 260 + 80;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * spd * 0.05,
+      vy: Math.sin(a) * spd * 0.05 - 3,
+      rot: Math.random() * Math.PI,
+      vrot: (Math.random() - 0.5) * 8,
+      size: Math.random() * 6 + 3,
+      life: 0.85,
+      maxLife: 0.85,
+      hue: Math.random() > 0.6 ? 0 : 190,
+      shape: 'shard'
+    });
+  }
+}
+
+function triggerCrash(){
+  if(crashing || invulnTimer > 0) return;
+  crashing = true;
+  crashTimer = 0.85;
+  shake = Math.min(shake + 18, 22);
+  flash = 0.6;
+  
+  spawnShardExplosion(PLAYER_SCREEN_X, player.feetY - PLAYER_R);
+  spawnParticles(PLAYER_SCREEN_X, player.feetY - 10, 0, 30, 2.5);
+  spawnShockwave(PLAYER_SCREEN_X, player.feetY - 10, 'rgba(239, 68, 68, 0.85)', 48);
+  
+  showCrashBanner();
+  sfxCrash();
+}
+
+function respawn(){
+  crashing = false;
+  hideCrashBanner();
+  distance = Math.max(0, distance - RESPAWN_BACK);
+  const startIdx = Math.floor(distance / TILE_W);
+  for(let i = 0; i < SAFE_TILES; i++) tileHeights[startIdx + i] = 0;
+  
+  player.feetY = groundY;
+  player.prevFeetY = groundY;
+  player.vy = 0;
+  player.grounded = true;
+  player.jumpsUsed = 0;
+  player.rollAngle = 0;
+  player.tiltAngle = 0;
+  invulnTimer = 1.0;
+}
+
+// User Actions
+function tap(){
+  ensureAudio();
+  if(state === 'ready'){
+    sfxStart();
+    resetWorld();
+    return;
+  }
+  if(state === 'paused'){
+    resumeGame();
+    return;
+  }
+  if(state !== 'playing' || crashing) return;
+
+  if(player.grounded){
+    player.vy = JUMP_V;
+    player.grounded = false;
+    player.jumpsUsed = 1;
+    spawnParticles(PLAYER_SCREEN_X, player.feetY, 185, 9, 1.2);
+    spawnShockwave(PLAYER_SCREEN_X, player.feetY, 'rgba(0, 240, 255, 0.7)', 28);
+    sfxJump();
+  } else if(player.jumpsUsed < 2){
+    player.vy = DOUBLEJUMP_V;
+    player.jumpsUsed = 2;
+    spawnParticles(PLAYER_SCREEN_X, player.feetY - 4, 280, 14, 1.8);
+    spawnShockwave(PLAYER_SCREEN_X, player.feetY - 4, 'rgba(168, 85, 247, 0.85)', 40);
+    sfxDoubleJump();
+  }
+}
+
+function pauseGame(){
+  if(state === 'playing'){
+    state = 'paused';
+    document.getElementById('pause-screen').classList.add('active');
+  }
+}
+
+function resumeGame(){
+  if(state === 'paused'){
+    state = 'playing';
+    document.getElementById('pause-screen').classList.remove('active');
+  }
+}
+
+function toggleAudio(){
+  ensureAudio();
+  soundEnabled = !soundEnabled;
+  const onDisp = soundEnabled ? 'block' : 'none';
+  const offDisp = soundEnabled ? 'none' : 'block';
+  const a1 = document.getElementById('audio-icon-on');
+  const a2 = document.getElementById('audio-icon-off');
+  const s1 = document.getElementById('side-audio-icon-on');
+  const s2 = document.getElementById('side-audio-icon-off');
+  if(a1) a1.style.display = onDisp;
+  if(a2) a2.style.display = offDisp;
+  if(s1) s1.style.display = onDisp;
+  if(s2) s2.style.display = offDisp;
+  if(soundEnabled) sfxJump();
+}
+
+// Confirmation Dialog Logic (Safe Exit / Home)
+let pendingAction = null; // 'exit' or 'home'
+
+function openConfirmModal(action){
+  pendingAction = action;
+  if(state === 'playing') pauseGame();
+  const modal = document.getElementById('confirm-modal');
+  const title = document.getElementById('confirm-modal-title');
+  const desc = document.getElementById('confirm-modal-desc');
+  if(action === 'exit'){
+    if(title) title.textContent = 'EXIT GAME?';
+    if(desc) desc.textContent = 'Are you sure you want to exit? Your personal best and total climbed distance are safely saved.';
+  } else {
+    if(title) title.textContent = 'RETURN TO BASECAMP?';
+    if(desc) desc.textContent = 'Return to the main title screen? Your current progress and best score are preserved.';
+  }
+  if(modal) modal.classList.add('active');
+}
+
+function closeConfirmModal(){
+  const modal = document.getElementById('confirm-modal');
+  if(modal) modal.classList.remove('active');
+  pendingAction = null;
+}
+
+function handleConfirmOk(){
+  saveStats();
+  const action = pendingAction;
+  closeConfirmModal();
+  state = 'ready';
+  document.getElementById('hud-overlay').classList.remove('active');
+  document.getElementById('pause-screen').classList.remove('active');
+  document.getElementById('start-screen').classList.add('active');
+  updateUIStats();
+  if(action === 'exit'){
+    try {
+      window.close();
+    } catch(e){}
+  }
+}
+
+// Event Listeners
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  tap();
+});
+
+const touchJumpBtn = document.getElementById('touch-jump-btn');
+if(touchJumpBtn){
+  touchJumpBtn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    tap();
+  });
+}
+
+document.getElementById('start-btn').addEventListener('click', e => {
+  e.preventDefault();
+  tap();
+});
+
+document.getElementById('resume-btn').addEventListener('click', e => {
+  e.preventDefault();
+  resumeGame();
+});
+
+document.getElementById('restart-btn').addEventListener('click', e => {
+  e.preventDefault();
+  sfxStart();
+  resetWorld();
+});
+
+document.getElementById('pause-btn').addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  pauseGame();
+});
+
+document.getElementById('audio-toggle-btn').addEventListener('click', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  toggleAudio();
+});
+
+// Left-side panel buttons
+const homeBtn = document.getElementById('home-btn');
+if(homeBtn){
+  homeBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    openConfirmModal('home');
+  });
+}
+
+const exitBtn = document.getElementById('exit-btn');
+if(exitBtn){
+  exitBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    openConfirmModal('exit');
+  });
+}
+
+const sideAudioBtn = document.getElementById('side-audio-btn');
+if(sideAudioBtn){
+  sideAudioBtn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleAudio();
+  });
+}
+
+// Modal action buttons
+const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+if(confirmCancelBtn){
+  confirmCancelBtn.addEventListener('click', e => {
+    e.preventDefault();
+    closeConfirmModal();
+  });
+}
+
+const confirmOkBtn = document.getElementById('confirm-ok-btn');
+if(confirmOkBtn){
+  confirmOkBtn.addEventListener('click', e => {
+    e.preventDefault();
+    handleConfirmOk();
+  });
+}
+
+window.addEventListener('keydown', e => {
+  if(e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter'){
+    e.preventDefault();
+    tap();
+  } else if(e.code === 'Escape'){
+    e.preventDefault();
+    const modal = document.getElementById('confirm-modal');
+    if(modal && modal.classList.contains('active')){
+      closeConfirmModal();
+    } else if(state === 'playing'){
+      pauseGame();
+    } else if(state === 'paused'){
+      resumeGame();
+    }
+  }
+});
+
+// UI Helpers
+const hudOverlay = document.getElementById('hud-overlay');
+const hudLevelNum = document.getElementById('hud-level-num');
+const hudLevelBar = document.getElementById('hud-level-bar');
+const hudDistVal = document.getElementById('hud-distance-val');
+const hudSpeedVal = document.getElementById('hud-speed-val');
+const hudBestVal = document.getElementById('hud-best-val');
+const hudTotalVal = document.getElementById('hud-total-val');
+const startBestVal = document.getElementById('start-best-val');
+const startTotalVal = document.getElementById('start-total-val');
+const crashBanner = document.getElementById('crash-banner');
+const levelupBanner = document.getElementById('levelup-banner');
+const levelupTitle = document.getElementById('levelup-title');
+let newRecordAchieved = false;
+
+function updateUIStats(){
+  const b = Math.floor(bestDistance);
+  const t = Math.floor(totalDistance);
+  if(hudBestVal) hudBestVal.textContent = `${b}m`;
+  if(hudTotalVal) hudTotalVal.textContent = `TOT ${t}m`;
+  if(startBestVal) startBestVal.textContent = `${b}m`;
+  if(startTotalVal) startTotalVal.textContent = `${t}m`;
+}
+
+function showCrashBanner(){
+  if(crashBanner) crashBanner.classList.add('active');
+}
+
+function hideCrashBanner(){
+  if(crashBanner) crashBanner.classList.remove('active');
+}
+
+let levelupTimeout = null;
+function showLevelUpBanner(lvl){
+  if(!levelupBanner) return;
+  levelupTitle.textContent = `SECTOR 0${lvl}`;
+  levelupBanner.classList.add('active');
+  clearTimeout(levelupTimeout);
+  levelupTimeout = setTimeout(() => {
+    levelupBanner.classList.remove('active');
+  }, 1600);
+}
+
+function hideLevelUpBanner(){
+  if(levelupBanner) levelupBanner.classList.remove('active');
+}
+
+// ==========================================
+// 6. UPDATE LOOP
+// ==========================================
+let lastT = performance.now();
+
+function update(dt){
+  // Update ambient star twinkling & drifting embers regardless of state
+  for(const s of stars){
+    s.twinkle += dt * s.speed;
+  }
+  for(const em of embers){
+    em.x += em.vx * dt;
+    em.y += em.vy * dt;
+    if(em.y < 0) { em.y = H + 10; em.x = Math.random() * W; }
+    if(em.x < 0) em.x = W + 10;
+  }
+
+  if(state !== 'playing') return;
+
+  if(invulnTimer > 0) invulnTimer -= dt;
+
+  if(crashing){
+    crashTimer -= dt;
+    if(crashTimer <= 0) respawn();
+  } else {
+    const spd = speedFor(distance);
+    distance += spd * dt;
+    totalDistance += spd * dt;
+    if(distance > bestDistance){
+      bestDistance = distance;
+      const newRecordPill = document.getElementById('new-record-pill');
+      if(!newRecordAchieved && distance > 25){
+        newRecordAchieved = true;
+        if(newRecordPill) newRecordPill.classList.add('active');
+      }
+    }
+
+    ensureTerrain(distance);
+
+    player.prevFeetY = player.feetY;
+    player.vy += GRAVITY * dt;
+    player.feetY += player.vy * dt;
+
+    // Gyroscopic / roll physics
+    player.rollAngle += (spd / 20) * dt;
+    const targetTilt = Math.max(-0.4, Math.min(0.4, player.vy / 1800));
+    player.tiltAngle += (targetTilt - player.tiltAngle) * Math.min(dt * 12, 1);
+
+    const idx = Math.floor(distance / TILE_W);
+    const h = tileHeights[idx];
+    const requiredSurfaceY = (h === undefined) ? null : (groundY - h * STEP_H);
+
+    if(requiredSurfaceY !== null){
+      const wasAbove = player.prevFeetY <= requiredSurfaceY + 2;
+      if(wasAbove && player.feetY >= requiredSurfaceY && player.vy >= 0){
+        player.feetY = requiredSurfaceY;
+        player.vy = 0;
+        if(!player.grounded){
+          sfxLand();
+          spawnShockwave(PLAYER_SCREEN_X, player.feetY, 'rgba(0, 240, 255, 0.45)', 22);
+          spawnParticles(PLAYER_SCREEN_X, player.feetY, 185, 5, 0.8);
+        }
+        player.grounded = true;
+        player.jumpsUsed = 0;
+      } else if(player.feetY > requiredSurfaceY){
+        triggerCrash();
+      } else {
+        player.grounded = false;
+      }
+    } else {
+      player.grounded = false;
+      if(player.feetY > H + 100) triggerCrash();
+    }
+
+    // Ground dust & running plasma sparks
+    if(player.grounded){
+      dustTimer -= dt;
+      if(dustTimer <= 0){
+        spawnParticles(PLAYER_SCREEN_X - 10, player.feetY, 185, 1, 0.6);
+        dustTimer = 0.08;
+      }
+    }
+
+    // Player ghosting speed trail
+    trailTimer -= dt;
+    if(trailTimer <= 0){
+      playerTrail.push({
+        x: PLAYER_SCREEN_X,
+        y: player.feetY - PLAYER_R,
+        vy: player.vy,
+        alpha: 0.45,
+        tilt: player.tiltAngle
+      });
+      if(playerTrail.length > 5) playerTrail.shift();
+      trailTimer = 0.05;
+    }
+
+    // Level progression
+    level = levelFor(distance);
+    if(level > lastLevel){
+      lastLevel = level;
+      showLevelUpBanner(level);
+      sfxLevelUp();
+      spawnParticles(W / 2, H * 0.3, 45, 30, 2.8);
+    }
+
+    // HUD element updates
+    hudDistVal.textContent = `${Math.floor(distance)}m`;
+    hudSpeedVal.textContent = `⚡ ${Math.floor(spd)} M/S`;
+    hudLevelNum.textContent = `LV 0${level}`;
+    const progressInLevel = (distance % LEVEL_LEN) / LEVEL_LEN;
+    hudLevelBar.style.width = `${Math.floor(progressInLevel * 100)}%`;
+    hudBestVal.textContent = `${Math.floor(bestDistance)}m`;
+    hudTotalVal.textContent = `TOT ${Math.floor(totalDistance)}m`;
+
+    saveTimer += dt;
+    if(saveTimer > 3){
+      saveTimer = 0;
+      saveStats();
+    }
+  }
+
+  // Camera Shake & Screen Flash decay
+  shake *= 0.88;
+  if(shake < 0.05) shake = 0;
+  flash *= 0.90;
+  if(flash < 0.01) flash = 0;
+
+  // Update Particles
+  for(let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.22;
+    p.vx *= 0.96;
+    if(p.rot !== undefined) p.rot += p.vrot * dt;
+    p.life -= dt * 1.6;
+    if(p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Update Shockwaves
+  for(let i = shockwaves.length - 1; i >= 0; i--){
+    const sw = shockwaves[i];
+    sw.radius += (sw.maxRadius - sw.radius) * (dt * 12);
+    sw.life -= dt * 2.5;
+    if(sw.life <= 0) shockwaves.splice(i, 1);
+  }
+
+  // Update Trail
+  for(let i = playerTrail.length - 1; i >= 0; i--){
+    const tr = playerTrail[i];
+    tr.alpha -= dt * 3.5;
+    if(tr.alpha <= 0) playerTrail.splice(i, 1);
+  }
+}
+
+// ==========================================
+// 7. 3D-INSPIRED RENDERING
+// ==========================================
+function draw(){
+  ctx.save();
+  ctx.clearRect(0, 0, W, H);
+
+  // Dynamic cyber-hue shifting with elevation
+  const hue = (210 + level * 16) % 360;
+  const compHue = (hue + 130) % 360;
+
+  // Layer 1: Deep Sky & Atmospheric Nebula
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#020308');
+  skyGrad.addColorStop(0.35, `hsl(${hue}, 48%, 8%)`);
+  skyGrad.addColorStop(0.70, `hsl(${hue - 15}, 40%, 12%)`);
+  skyGrad.addColorStop(1, '#050714');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Layer 2: Shimmering Aurora Borealis Ribbons
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  drawAurora(distance * 0.08, H * 0.22, hue);
+  drawAurora(distance * 0.12 + 100, H * 0.32, compHue);
+  ctx.restore();
+
+  // Layer 3: Celestial Starfield & Cyber Moon
+  drawStars();
+  drawCyberMoon(W * 0.78, H * 0.16, hue);
+
+  // Layer 4: Multi-Plane 3D Parallax Alpine Mountains
+  // Plane 1: Furthest high alpine needle peaks
+  drawMountainLayer(distance * 0.05, H * 0.52, 90, 42, `hsl(${hue}, 28%, 18%)`, `hsl(${hue}, 35%, 26%)`, 0.65);
+  // Plane 2: Mid-range faceted ridges
+  drawMountainLayer(distance * 0.14, H * 0.60, 68, 30, `hsl(${hue + 10}, 32%, 14%)`, `hsl(${hue}, 40%, 20%)`, 0.85);
+  // Plane 3: Closer jagged ridge & valley mist
+  drawMountainLayer(distance * 0.28, H * 0.66, 48, 18, `hsl(${hue + 20}, 42%, 9%)`, `hsl(${hue + 20}, 50%, 14%)`, 1.0);
+
+  // Layer 5: Floating Cyber Mist & Embers
+  drawEmbers();
+
+  // Apply Camera Shake
+  ctx.save();
+  if(shake > 0){
+    const sx = (Math.random() - 0.5) * shake;
+    const sy = (Math.random() - 0.5) * shake;
+    ctx.translate(sx, sy);
+  }
+
+  // Layer 6: 3D Platforms with Realistic Shading & Bevels
+  draw3DPlatforms(hue);
+
+  // Layer 7: Shockwaves
+  drawShockwaves();
+
+  // Layer 8: Player After-Image Ghost Trail
+  drawPlayerTrail();
+
+  // Layer 9: 3D Player Character
+  draw3DPlayer(hue);
+
+  // Layer 10: Particles & Shards
+  drawParticles();
+
+  ctx.restore(); // end camera shake
+
+  // Screen Flash on Crash
+  if(flash > 0){
+    ctx.fillStyle = `rgba(239, 68, 68, ${flash * 0.4})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.restore();
+}
+
+// ------------------------------------------
+// Background Element Renderers
+// ------------------------------------------
+function drawAurora(offset, baseY, aurHue){
+  ctx.save();
+  const t = performance.now() * 0.001;
+  ctx.beginPath();
+  ctx.moveTo(0, baseY);
+  for(let x = 0; x <= W; x += 15){
+    const y = baseY + Math.sin((x + offset * 0.5) * 0.015 + t) * 22 + Math.cos((x - offset * 0.3) * 0.02 - t * 0.8) * 16;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, baseY + 60);
+  ctx.lineTo(0, baseY + 60);
+  ctx.closePath();
+  
+  const g = ctx.createLinearGradient(0, baseY - 30, 0, baseY + 60);
+  g.addColorStop(0, 'transparent');
+  g.addColorStop(0.4, `hsla(${aurHue}, 90%, 65%, 0.12)`);
+  g.addColorStop(0.7, `hsla(${aurHue + 40}, 80%, 55%, 0.08)`);
+  g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStars(){
+  ctx.save();
+  for(const s of stars){
+    const alpha = (Math.sin(s.twinkle) * 0.4 + 0.6) * 0.8;
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawCyberMoon(cx, cy, moonHue){
+  ctx.save();
+  // Radial corona glow
+  const corona = ctx.createRadialGradient(cx, cy, 10, cx, cy, 65);
+  corona.addColorStop(0, `hsla(${moonHue}, 80%, 75%, 0.25)`);
+  corona.addColorStop(0.5, `hsla(${moonHue}, 80%, 60%, 0.08)`);
+  corona.addColorStop(1, 'transparent');
+  ctx.fillStyle = corona;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 65, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Crescent Cyber Moon Body
+  const moonGrad = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, 24);
+  moonGrad.addColorStop(0, '#ffffff');
+  moonGrad.addColorStop(0.6, `hsl(${moonHue}, 60%, 80%)`);
+  moonGrad.addColorStop(1, `hsl(${moonHue}, 60%, 50%)`);
+  ctx.fillStyle = moonGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shadow cutout to form glowing crescent
+  ctx.fillStyle = '#050713';
+  ctx.beginPath();
+  ctx.arc(cx + 8, cy - 4, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawMountainLayer(offset, baseY, amp, freq, baseColor, peakColor, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  
+  // High-poly mountain silhouette with sharp alpine peaks
+  let prevY = baseY;
+  for(let x = 0; x <= W + 20; x += 20){
+    const wave1 = Math.sin((x + offset) / (freq * 8)) * amp;
+    const wave2 = Math.cos((x * 1.8 + offset) / (freq * 4)) * (amp * 0.4);
+    const y = baseY - Math.abs(wave1 + wave2);
+    ctx.lineTo(x, y);
+    prevY = y;
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+
+  const g = ctx.createLinearGradient(0, baseY - amp, 0, H);
+  g.addColorStop(0, peakColor);
+  g.addColorStop(0.5, baseColor);
+  g.addColorStop(1, '#020308');
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  // Ridge rim highlight
+  ctx.strokeStyle = `rgba(255, 255, 255, 0.12)`;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawEmbers(){
+  ctx.save();
+  for(const em of embers){
+    ctx.fillStyle = `hsla(${em.hue}, 90%, 65%, ${em.alpha})`;
+    ctx.beginPath();
+    ctx.arc(em.x, em.y, em.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ------------------------------------------
+// 3D Platform Drawing (Top slab + Front face + 3D Edges)
+// ------------------------------------------
+function draw3DPlatforms(themeHue){
+  const startIdx = Math.floor((distance - PLAYER_SCREEN_X) / TILE_W) - 1;
+  const endIdx = Math.floor((distance + (W - PLAYER_SCREEN_X)) / TILE_W) + 2;
+  const depth3D = 8; // Pseudo-3D isometric vertical offset for top deck
+
+  for(let idx = startIdx; idx <= endIdx; idx++){
+    const hgt = tileHeights[idx];
+    if(hgt === undefined) continue;
+
+    const worldX = idx * TILE_W;
+    const sx = Math.round(worldX - distance + PLAYER_SCREEN_X);
+    const topY = Math.round(groundY - hgt * STEP_H);
+    const nextHgt = tileHeights[idx + 1];
+    const prevHgt = tileHeights[idx - 1];
+
+    // Color logic
+    const isObstacle = hgt >= 2 && (prevHgt === undefined || prevHgt < hgt);
+    const blockHue = isObstacle ? 35 : (hgt === 0 ? themeHue : (themeHue + 45 + hgt * 14) % 360);
+    const neonColor = isObstacle ? '#f59e0b' : `hsl(${blockHue}, 95%, 65%)`;
+
+    // 1. Drop Shadow into abyss
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(sx, topY + depth3D, TILE_W + 1, 14);
+    ctx.restore();
+
+    // 2. Front Vertical Face (chassis with metallic gradient & tech lines)
+    const frontGrad = ctx.createLinearGradient(sx, topY + depth3D, sx, H);
+    frontGrad.addColorStop(0, `hsl(${blockHue}, 35%, ${isObstacle ? 22 : 16}%)`);
+    frontGrad.addColorStop(0.3, `hsl(${blockHue}, 30%, 10%)`);
+    frontGrad.addColorStop(1, '#03050c');
+    ctx.fillStyle = frontGrad;
+    ctx.fillRect(sx, topY + depth3D, TILE_W + 1, H - (topY + depth3D) + 40);
+
+    // Subtle vertical tech grooves
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(sx + TILE_W - 2, topY + depth3D, 2, H - topY);
+
+    // Hazard Stripes on Hurdles
+    if(isObstacle){
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx, topY + depth3D, TILE_W, 28);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.25)';
+      ctx.lineWidth = 4;
+      for(let lx = -20; lx < TILE_W + 30; lx += 12){
+        ctx.beginPath();
+        ctx.moveTo(sx + lx, topY + depth3D + 28);
+        ctx.lineTo(sx + lx + 16, topY + depth3D);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 3. Side Face 3D Perspective Facet (if edge is exposed to a gap or lower platform)
+    if(prevHgt === undefined || prevHgt < hgt){
+      // Left 3D facet edge
+      ctx.fillStyle = `hsl(${blockHue}, 45%, 8%)`;
+      ctx.beginPath();
+      ctx.moveTo(sx, topY);
+      ctx.lineTo(sx - 3, topY + depth3D);
+      ctx.lineTo(sx - 3, H);
+      ctx.lineTo(sx, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    if(nextHgt === undefined || nextHgt < hgt){
+      // Right 3D facet edge
+      ctx.fillStyle = `hsl(${blockHue}, 45%, 12%)`;
+      ctx.beginPath();
+      ctx.moveTo(sx + TILE_W, topY);
+      ctx.lineTo(sx + TILE_W + 3, topY + depth3D);
+      ctx.lineTo(sx + TILE_W + 3, H);
+      ctx.lineTo(sx + TILE_W, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // 4. Top Surface Slab (Walkable Perspective Deck)
+    const topGrad = ctx.createLinearGradient(sx, topY, sx, topY + depth3D);
+    topGrad.addColorStop(0, isObstacle ? '#fbbf24' : `hsl(${blockHue}, 80%, 48%)`);
+    topGrad.addColorStop(1, isObstacle ? '#92400e' : `hsl(${blockHue}, 60%, 26%)`);
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(sx, topY, TILE_W + 1, depth3D);
+
+    // 5. Glowing Top Neon Edge & Corner Nodes
+    ctx.save();
+    ctx.shadowColor = neonColor;
+    ctx.shadowBlur = isObstacle ? 14 : 8;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx, topY, TILE_W + 1, 2);
+
+    // Edge LED nodes
+    ctx.fillStyle = neonColor;
+    ctx.beginPath();
+    ctx.arc(sx + 3, topY + 1, 1.8, 0, Math.PI * 2);
+    ctx.arc(sx + TILE_W - 3, topY + 1, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------
+// 3D Player Character Rendering
+// ------------------------------------------
+function drawPlayerTrail(){
+  for(let i = 0; i < playerTrail.length; i++){
+    const tr = playerTrail[i];
+    ctx.save();
+    ctx.translate(tr.x, tr.y);
+    ctx.rotate(tr.tilt);
+    ctx.globalAlpha = tr.alpha * 0.45;
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.4)';
+    ctx.beginPath();
+    ctx.arc(0, 0, PLAYER_R * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function draw3DPlayer(themeHue){
+  const cx = PLAYER_SCREEN_X;
+  const cy = player.feetY - PLAYER_R;
+  const isInvuln = invulnTimer > 0 && Math.floor(performance.now() / 60) % 2 === 0;
+  if(isInvuln) return;
+
+  const stretch = Math.max(-0.35, Math.min(0.35, player.vy / 1800));
+  const scaleX = 1 - stretch * 0.45;
+  const scaleY = 1 + stretch * 0.45;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(player.tiltAngle);
+  ctx.scale(scaleX, scaleY);
+
+  // 1. Plasma Thruster Exhaust
+  if(!player.grounded && !crashing){
+    ctx.save();
+    const flameLen = Math.min(Math.abs(player.vy) * 0.035 + 8, 26);
+    const flameGrad = ctx.createLinearGradient(0, PLAYER_R - 2, 0, PLAYER_R + flameLen);
+    flameGrad.addColorStop(0, '#ffffff');
+    flameGrad.addColorStop(0.3, player.jumpsUsed === 2 ? '#ec4899' : '#00f0ff');
+    flameGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath();
+    ctx.moveTo(-5, PLAYER_R - 2);
+    ctx.lineTo(5, PLAYER_R - 2);
+    ctx.lineTo(0, PLAYER_R + flameLen + (Math.random() * 4));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 2. Outer Gyroscopic Perspective Energy Rings (3D Tilting Ellipses)
+  if(!crashing){
+    ctx.save();
+    const ringAngle = player.rollAngle;
+    ctx.strokeStyle = player.jumpsUsed === 2 ? 'rgba(236, 72, 153, 0.75)' : 'rgba(0, 240, 255, 0.75)';
+    ctx.lineWidth = 1.8;
+    ctx.shadowColor = player.jumpsUsed === 2 ? '#ec4899' : '#00f0ff';
+    ctx.shadowBlur = 10;
+
+    // Ring 1 (Rotated +32 deg)
+    ctx.save();
+    ctx.rotate(0.55);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, PLAYER_R * 1.4, PLAYER_R * 0.5, ringAngle, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Satellite Node on Ring 1
+    const node1X = Math.cos(ringAngle) * PLAYER_R * 1.4;
+    const node1Y = Math.sin(ringAngle) * PLAYER_R * 0.5;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(node1X, node1Y, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Ring 2 (Rotated -32 deg)
+    ctx.save();
+    ctx.rotate(-0.55);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, PLAYER_R * 1.35, PLAYER_R * 0.45, -ringAngle * 1.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  // 3. 3D Spherical Core with Multi-stop Radial Lighting
+  const coreHue = crashing ? 0 : (player.jumpsUsed === 2 ? 300 : 190);
+  const coreGrad = ctx.createRadialGradient(-PLAYER_R * 0.35, -PLAYER_R * 0.35, 1, 0, 0, PLAYER_R);
+
+  if(crashing){
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.3, '#ff7777');
+    coreGrad.addColorStop(0.8, '#dc2626');
+    coreGrad.addColorStop(1, '#450a0a');
+  } else if(player.jumpsUsed === 2){
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.3, '#fbcfe8');
+    coreGrad.addColorStop(0.7, '#c084fc');
+    coreGrad.addColorStop(1, '#581c87');
+  } else {
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.3, '#cffafe');
+    coreGrad.addColorStop(0.7, '#06b6d4');
+    coreGrad.addColorStop(1, '#0e3a53');
+  }
+
+  ctx.save();
+  ctx.shadowColor = crashing ? 'rgba(239, 68, 68, 0.9)' : (player.jumpsUsed === 2 ? 'rgba(168, 85, 247, 0.9)' : 'rgba(0, 240, 255, 0.85)');
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, PLAYER_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 4. Sharp 3D Specular Highlight Glint
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.beginPath();
+  ctx.arc(-PLAYER_R * 0.35, -PLAYER_R * 0.35, PLAYER_R * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 5. Visor / Center Horizon Line (Sci-fi Eye)
+  ctx.strokeStyle = crashing ? '#ffffff' : (player.jumpsUsed === 2 ? '#fdf2f8' : '#e0f2fe');
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, PLAYER_R * 0.85, -0.3, 0.3);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ------------------------------------------
+// Shockwaves & Particles Rendering
+// ------------------------------------------
+function drawShockwaves(){
+  for(const sw of shockwaves){
+    ctx.save();
+    ctx.globalAlpha = Math.max(sw.life, 0);
+    ctx.strokeStyle = sw.color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.ellipse(sw.x, sw.y, sw.radius, sw.radius * 0.45, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(const p of particles){
+    ctx.save();
+    ctx.globalAlpha = Math.max(p.life, 0);
+    ctx.fillStyle = p.hue === 0 ? '#ef4444' : `hsl(${p.hue}, 90%, 65%)`;
+
+    if(p.shape === 'shard'){
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot || 0);
+      ctx.beginPath();
+      ctx.moveTo(-p.size, -p.size * 0.5);
+      ctx.lineTo(p.size, 0);
+      ctx.lineTo(0, p.size);
+      ctx.closePath();
+      ctx.fill();
+    } else if(p.shape === 'diamond'){
+      ctx.translate(p.x, p.y);
+      ctx.beginPath();
+      ctx.moveTo(0, -p.size);
+      ctx.lineTo(p.size, 0);
+      ctx.lineTo(0, p.size);
+      ctx.lineTo(-p.size, 0);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ==========================================
+// 8. ANIMATION LOOP
+// ==========================================
+function loop(t){
+  const dt = Math.min((t - lastT) / 1000, 0.05);
+  lastT = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
